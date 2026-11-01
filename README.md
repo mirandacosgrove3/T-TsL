@@ -1,4 +1,4 @@
-# Tessel
+# T-TsL
 
 A fast, touch-first falling-block puzzle game for phones. Plays as an installable web app: open it in Safari, then Share → Add to Home Screen.
 

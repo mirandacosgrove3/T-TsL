@@ -1,6 +1,6 @@
 {
-  "name": "Tessel",
-  "short_name": "Tessel",
+  "name": "T-TsL",
+  "short_name": "T-TsL",
   "description": "A fast, touch-first falling-block puzzle game.",
   "start_url": "./",
   "scope": "./",

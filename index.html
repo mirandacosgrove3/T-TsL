@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Tessel">
+<meta name="apple-mobile-web-app-title" content="T-TsL">
 <meta name="theme-color" content="#13110f">
-<title>Tessel</title>
+<title>T-TsL</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" href="icons/icon-192.png">
@@ -87,7 +87,7 @@ const MAX_RESETS=15;
 
 // ================= storage / settings =================
 const store={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem(k)}catch(e){}}};
-const DEF={control:'drag',sens:0.85,vsens:1.0,flick:0.9,das:150,arr:30,sdf:20,lock:500,tapSides:true,ghost:true,hand:'right',hStrength:0.8,hMoves:true,liveFlick:true,lv:{marathon:1,sprint:1,ultra:1,master:21,zen:1,still:0,countdown:1},endless:false};
+const DEF={control:'drag',sens:0.85,vsens:1.0,flick:0.9,das:150,arr:30,sdf:20,lock:500,tapSides:true,ghost:true,hand:'right',hStrength:0.8,hMoves:true,liveFlick:true,iosHx:false,clearPause:'off',lv:{marathon:1,sprint:1,ultra:1,master:21,zen:1,still:0,countdown:1},endless:false};
 let S=Object.assign({},DEF,store.get('tessel.settings',{}));S.lv=Object.assign({},DEF.lv,S.lv||{});
 let BEST=store.get('tessel.best',{});
 
@@ -138,7 +138,7 @@ const Hap=(()=>{
       const pat=[];let cur=0;
       for(const e of ev){const on=e.d?Math.round(e.d*e.i):Math.round(6+e.i*24);if(pat.length){pat.push(Math.max(0,e.t-cur))}pat.push(on);cur=e.t+on}
       try{navigator.vibrate(pat)}catch(e){}return}
-    if(sw){// single fixed-strength tick per event; only works on iOS 17.4–26.4
+    if(sw&&S.iosHx){// single fixed-strength tick per event; only works on iOS 17.4–26.4
       for(const e of ev){if(e.i<0.3&&ev.length===1&&k.p<2)continue;if(e.t===0)swLabel.click();else setTimeout(()=>swLabel.click(),e.t)}}
   }
   return{play,backend,get log(){return log}};
@@ -213,11 +213,22 @@ function tspin(c){
   const front=[[[0,0],[2,0]],[[2,0],[2,2]],[[0,2],[2,2]],[[0,0],[0,2]]][c.r].filter(occ).length;
   return(front===2||g.lastKick===4)?2:1;
 }
-function clearFull(){
+function findFull(){
   const full=[];
-  for(let y=0;y<H;y++){let f=true;for(let x=0;x<W;x++)if(!g.board[y*W+x]){f=false;break}if(f)full.push(y)}
-  for(const y of full){g.board.splice(y*W,W);g.board.unshift(...new Array(W).fill(0))}
+  for(let y=TOP-4;y<H;y++){let f=true;for(let x=0;x<W;x++)if(!g.board[y*W+x]){f=false;break}if(f)full.push(y)}
   return full;
+}
+function collapse(full){
+  // shift rows down in place (no array reallocation)
+  const b=g.board;let k=full.length-1,dst=H-1;
+  for(let y=H-1;y>=0;y--){if(k>=0&&full[k]===y){k--;continue}if(dst!==y)for(let x=0;x<W;x++)b[dst*W+x]=b[y*W+x];dst--}
+  for(;dst>=0;dst--)for(let x=0;x<W;x++)b[dst*W+x]=0;
+  dirty=true;
+}
+function clearFull(){const f=findFull();if(f.length)collapse(f);return f}
+function afterClear(){
+  if(g.mode==='countdown'){g.cd--;if(g.cd<=0){g.cd=pickCd();if(!countdownDrop()){hap('topout');endGame(false);return}}}
+  spawn(takeNext());
 }
 function countdownDrop(){
   const x=Math.floor(Math.random()*W);let top=H;
@@ -234,7 +245,7 @@ function lock(dropStrength){
   for(const[cx,cy]of ROT[c.t][c.r]){const x=c.x+cx,y=c.y+cy;if(y>=0)g.board[y*W+x]=c.t;if(y>=TOP)above=false}
   g.cur=null;g.pieces++;dirty=true;
   if(above){topOut();return}
-  const full=clearFull();
+  const full=findFull();
   const n=full.length,lv=Math.max(1,g.level);let pts=0,label=[],diff=false,wasB2B=false,ac=false;
   if(ts){pts=(ts===2?[400,800,1200,1600]:[100,200,400,400])[n]*lv;label.push((ts===2?'T-Spin':'Mini T-Spin')+(n?' '+NAMES[n]:''));diff=n>0}
   else if(n){pts=[0,100,300,500,800][n]*lv;label.push(NAMES[n]);diff=n===4}
@@ -242,8 +253,7 @@ function lock(dropStrength){
     if(diff&&g.b2b){pts=Math.floor(pts*1.5);label.unshift('B2B');wasB2B=true}
     g.b2b=diff;g.combo++;
     if(g.combo>0){pts+=50*g.combo*lv;label.push('Combo '+g.combo)}
-    if(g.board.every(v=>!v)){pts+=[0,800,1200,1800,2000][n]*lv;label.push('All Clear');ac=true}
-    g.flash={rows:full.map(y=>y-TOP),t:g.time};
+    if(g.board.every((v,i)=>!v||full.includes((i/W)|0))){pts+=[0,800,1200,1800,2000][n]*lv;label.push('All Clear');ac=true}
   }else g.combo=-1;
   // haptics: the biggest thing that happened wins, extras layer on
   if(ac)hap('allclear');
@@ -258,11 +268,11 @@ function lock(dropStrength){
   if(g.mode==='sprint'&&g.lines>=40){endGame(true);return}
   if(g.mode==='marathon'&&!g.endless&&g.lines>=150){endGame(true);return}
   if(g.mode==='master'&&g.lines>=(51-g.start)*10){endGame(true);return}
-  if(g.mode==='countdown'){g.cd--;if(g.cd<=0){g.cd=pickCd();if(!countdownDrop()){hap('topout');endGame(false);return}}}
   g.canHold=true;
   const cdl=n?clearMs(g.level):0;
-  if(cdl>0)g.areT=cdl;else spawn(takeNext());
-  if(state==='play')save();
+  if(cdl>0){g.pending=full;g.areT=cdl;g.areMax=cdl}
+  else{if(n){collapse(full);g.flash={rows:full.map(y=>y-TOP),t:g.time}}afterClear()}
+  if(state==='play')maybeSave();
 }
 function levelInterval(lv){return lv<=0?Infinity:1000*Math.pow(0.8-(Math.min(lv,20)-1)*0.007,Math.min(lv,20)-1)}
 const MLOCK=[[1,491.6],[10,491.6],[11,460],[15,291.6],[20,191.6],[25,141.6],[30,91.6]];
@@ -270,7 +280,7 @@ function masterLock(m){for(let i=1;i<MLOCK.length;i++){const[a,la]=MLOCK[i-1],[b
 function masterClear(m){return m<=10?500-50*(m-1):10}
 function gravMs(v){return v<=0?Infinity:v>=20?0:levelInterval(v)}
 function lockMs(v){return v>20?masterLock(v-20):S.lock}
-function clearMs(v){return v>20?masterClear(v-20):0}
+function clearMs(v){const f=S.clearPause==='full'?1:S.clearPause==='half'?0.5:0;return v>20?masterClear(v-20)*f:0}
 function lvShort(v){return v<=0?'Off':v>20?'M'+(v-20):'Lv '+v}
 function lvLabel(lv){if(lv<=0)return'Off';if(lv>20)return'M'+(lv-20)+' · 20G';const iv=levelInterval(lv);const g60=16.667/iv;return lv>=19?'Lv '+lv+' · 20G':g60>=1?'Lv '+lv+' · '+g60.toFixed(1)+'G':'Lv '+lv+' · '+(1000/iv).toFixed(1)+' rows/s'}
 
@@ -370,7 +380,7 @@ function update(dt){
   const lim=g.mode==='ultra'?180000:g.mode==='countdown'?300000:0;
   if(lim&&g.time>=lim){g.time=lim;endGame(true);return}
   if(lastDir)dasT+=dt;
-  if(!g.cur){if(g.areT>0){g.areT-=dt;if(g.areT<=0){g.areT=0;spawn(takeNext())}}if(!g.cur)return}
+  if(!g.cur){if(g.areT>0){g.areT-=dt;if(g.areT<=0){g.areT=0;if(g.pending){collapse(g.pending);g.pending=null}afterClear()}}if(!g.cur||state!=='play')return}
   if(lastDir){
     if(dasT>=S.das){
       const d=lastDir==='left'?-1:1;let moved=false,blocked=false;
@@ -467,6 +477,10 @@ function drawFx(){
   xf.clearRect(0,0,w,h);
   if(!g||state==='menu'){fxWasClear=true;return}
   if(g.flash){const a=1-(g.time-g.flash.t)/200;if(a>0){xf.fillStyle=`rgba(255,244,228,${0.5*a})`;for(const r of g.flash.rows)xf.fillRect(bx,by+r*cell,bw,cell)}else g.flash=null}
+  if(g.pending&&g.areMax){const p=Math.min(1,1-g.areT/g.areMax);
+    for(const y of g.pending){const r=y-TOP;if(r<0)continue;const ww=bw*Math.min(1,p*1.2);
+      xf.fillStyle=`rgba(255,244,228,${0.5*(1-p)})`;xf.fillRect(bx,by+r*cell,bw,cell);
+      xf.fillStyle='#1b1815';xf.fillRect(bx+(bw-ww)/2,by+r*cell,ww,cell)}}
   if(g.dropFx){const a=1-(g.time-g.dropFx.t0)/140;if(a>0&&g.dropFx.n>1){const d=g.dropFx;xf.fillStyle=COLORS[d.t];xf.globalAlpha=0.16*a;
       let minx=9,maxx=-1,miny=99;for(const[cx,cy]of ROT[d.t][d.r]){minx=Math.min(minx,cx);maxx=Math.max(maxx,cx);miny=Math.min(miny,cy)}
       const top=Math.max(0,d.y+miny-d.n-TOP);xf.fillRect(bx+(d.x+minx)*cell+cell*0.1,by+top*cell,(maxx-minx+1)*cell-cell*0.2,(d.y+miny-TOP-top)*cell);xf.globalAlpha=1}else g.dropFx=null}
@@ -526,13 +540,13 @@ function bestLabel(m){const b=BEST[m];if(b==null)return'';return m==='sprint'?'b
 function showMenu(){
   state='menu';g=null;resetInput();drawBg();dirty=true;
   const saved=store.get('tessel.save',null);
-  showOv(`<div class="card">${LOGO}<h1>Tessel</h1><p class="sub">Stack. Clear. Repeat.</p>
+  showOv(`<div class="card">${LOGO}<h1>T-TsL</h1><p class="sub">Stack. Clear. Repeat.</p>
   ${saved?`<button class="btn primary" data-a="continue">Continue<span>${MODE_NAMES[saved.mode]}</span></button>`:''}
   ${MODE_LIST.map(([grp,ms])=>`<p class="note" style="margin:8px 0 0;letter-spacing:1.2px;text-transform:uppercase;font-weight:600">${grp}</p>`+ms.map(m=>`<button class="btn" data-a="setup-${m}">${MODE_NAMES[m]}<span>${m==='still'?'no gravity':lvShort(S.lv[m])}${bestLabel(m)?' · '+bestLabel(m):''}</span></button>`).join('')).join('')}
   <button class="btn quiet" data-a="settings">Controls, haptics & settings</button></div>`);
 }
 const MODE_NOTE={marathon:'150 lines, speeding up every 10. Past Lv 20 it climbs into the Master curve (M1–M30).',sprint:'Clear 40 lines as fast as you can. Speed stays fixed.',ultra:'Score as much as you can in 3 minutes. Speed stays fixed.',master:'20G the whole way. Every 10 lines the lock delay and line-clear pause shrink, through M30.',zen:'No game over: topping out wipes the field and score and you keep going. Pick any speed, Lv 1 through M30; it stays fixed.',still:'No gravity, no lock timer, no game over. Pieces sit until you drop them, so you can plan every placement.',countdown:'5 minutes. Every few pieces, an I piece drops straight down a random column.'};
-function speedNote(v){return v>20?`Instant drop. Lock delay ${Math.round(masterLock(v-20))} ms, line-clear pause ${masterClear(v-20)} ms (Master table).`:v<=0?'Pieces only fall when you drop them.':`Lock delay ${S.lock} ms (change it in settings). No line-clear pause.`}
+function speedNote(v){return v>20?`Instant drop. Lock delay ${Math.round(masterLock(v-20))} ms (Master table). Line-clear pause ${Math.round(clearMs(v))} ms${S.clearPause==='off'?' (off in settings)':''}.`:v<=0?'Pieces only fall when you drop them.':`Lock delay ${S.lock} ms (change it in settings). No line-clear pause.`}
 function showSetup(m){
   if(m==='still'){showOv(`<div class="card"><h2>Still</h2><p class="sub">${MODE_NOTE.still}</p><button class="btn primary" data-a="new-still">Start</button><button class="btn quiet" data-a="menu">Back</button></div>`);return}
   const min=m==='master'?21:1,v=Math.max(min,S.lv[m]);S.lv[m]=v;
@@ -570,10 +584,13 @@ function endGame(win){
   <button class="btn primary" data-a="again">Play again</button>
   <button class="btn quiet" data-a="menu">Main menu</button></div>`),350);
 }
+let lastSave=0;
+function maybeSave(){const n=performance.now();if(n-lastSave>5000){lastSave=n;save()}}
 function save(){if(!g||state==='over')return;const{msgs,flash,hint,dropFx,...rest}=g;store.set('tessel.save',rest)}
 function continueGame(){
   const s=store.get('tessel.save',null);if(!s){showMenu();return}
   g=Object.assign({msgs:[],flash:null,start:s.level||1},s);
+  if(g.pending){collapse(g.pending);g.pending=null;g.areT=0}
   if(!g.cur){g.canHold=true;spawn(takeNext())}
   resume();
 }
@@ -605,10 +622,12 @@ function showSettings(from){
   ${slider('sdf','Soft drop speed',5,41,1,S.sdf,FMT.sdf)}
   <label class="tog">Left-handed layout<input type="checkbox" id="t-hand" ${S.hand==='left'?'checked':''}></label></div>`}
   <div class="set"><h3>Timing</h3>
-  ${slider('lock','Lock delay',100,1000,10,S.lock,FMT.lock,'How long a piece can sit on the stack before it locks. Standard is 500 ms. Applies to Lv speeds; M speeds use the Master table.')}</div>
+  ${slider('lock','Lock delay',100,1000,10,S.lock,FMT.lock,'How long a piece can sit on the stack before it locks. Standard is 500 ms. Applies to Lv speeds; M speeds use the Master table.')}
+  <div class="row"><label>Line-clear pause at M speeds</label><div class="seg" style="grid-template-columns:repeat(3,1fr)">${['off','half','full'].map(v=>`<button data-cp="${v}" class="${S.clearPause===v?'on':''}">${v==='off'?'Off':v==='half'?'Half':'Full'}</button>`).join('')}</div><p>Full matches the Master table (up to 500 ms at M1). Off keeps play continuous.</p></div></div>
   <div class="set"><h3>Haptics</h3>
   ${slider('hStrength','Strength',0,1,0.05,S.hStrength,FMT.hStrength)}
   <label class="tog">Tick on every move & soft drop<input type="checkbox" id="t-hMoves" ${S.hMoves?'checked':''}></label>
+  ${Hap.backend()==='ios-web'?`<label class="tog">Try iPhone web haptics (iOS 26.4 or older)<input type="checkbox" id="t-iosHx" ${S.iosHx?'checked':''}></label>`:''}
   <p class="note">${hapNote()}</p></div>
   <div class="set"><h3>Display</h3>
   <label class="tog">Landing preview<input type="checkbox" id="t-ghost" ${S.ghost?'checked':''}></label></div>
@@ -616,7 +635,8 @@ function showSettings(from){
   <button class="btn primary" data-a="settings-done">Done</button></div>`);
   ov.querySelectorAll('input[type=range]').forEach(inp=>{const id=inp.id.slice(2);inp.addEventListener('input',()=>{S[id]=+inp.value;document.getElementById('v-'+id).textContent=FMT[id](inp.value);saveSettings();if(id==='hStrength')hap('c2')})});
   ov.querySelectorAll('input[type=checkbox]').forEach(inp=>{const id=inp.id.slice(2);inp.addEventListener('change',()=>{if(id==='hand')S.hand=inp.checked?'left':'right';else S[id]=inp.checked;saveSettings();layout();hap('ui')})});
-  ov.querySelectorAll('.seg button').forEach(b=>b.addEventListener('click',()=>{S.control=b.dataset.c;saveSettings();layout();showSettings(afterSettings)}));
+  ov.querySelectorAll('[data-cp]').forEach(b=>b.addEventListener('click',()=>{S.clearPause=b.dataset.cp;saveSettings();showSettings(afterSettings)}));
+  ov.querySelectorAll('.seg button[data-c]').forEach(b=>b.addEventListener('click',()=>{S.control=b.dataset.c;saveSettings();layout();showSettings(afterSettings)}));
 }
 function saveSettings(){store.set('tessel.settings',S)}
 ov.addEventListener('click',e=>{
