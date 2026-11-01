@@ -18,7 +18,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family
 body{position:fixed;inset:0;touch-action:none}
 canvas{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none}
 #cvFx{pointer-events:auto;touch-action:none}
-#pauseBtn{position:fixed;top:10px;right:10px;width:40px;height:40px;border-radius:20px;border:1px solid var(--line);background:var(--panel);color:var(--dim);font:600 13px/1 inherit;letter-spacing:1px;display:none;z-index:5}
+#pauseBtn{position:fixed;width:40px;height:40px;border-radius:20px;border:1px solid var(--line);background:var(--panel);color:var(--dim);font:600 13px/1 inherit;letter-spacing:1px;display:none;z-index:5}
 #pad{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:space-between;align-items:flex-end;padding:10px 14px 16px;gap:12px;z-index:4;touch-action:none}
 #pad.mirror{flex-direction:row-reverse}
 #pad[hidden]{display:none}
@@ -436,6 +436,7 @@ function layout(){
   const by=Math.round(topPad+cell*0.9+Math.max(0,(h-topPad-padH-cell*21.4)/2));
   L={w,h,cell,bw,bh,bx,by,side:Math.round(cell*2.5),gap:Math.round(cell*0.3)};
   L.lx=bx-L.gap-L.side;L.rx=bx+bw+L.gap;
+  {const sz=Math.max(36,Math.min(48,L.side*0.8));Object.assign(pauseBtn.style,{width:sz+'px',height:sz+'px',borderRadius:sz/2+'px',left:Math.round(L.rx+L.side/2-sz/2)+'px',top:Math.round(by+cell*8.35+cell*0.5)+'px'})}
   sizeCanvas(cvBg,xb);sizeCanvas(cvBd,xd);sizeCanvas(cvFx,xf);
   buildSprites();drawBg();dirty=true;
 }
