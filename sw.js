@@ -1,7 +1,7 @@
 // Offline cache for T-TsL.
 // Opens instantly from cache, checks GitHub for a newer copy in the background
 // (bypassing the browser's HTTP cache), and tells the page when one arrives.
-const CACHE = 'ttsl-v3';
+const CACHE = 'ttsl-v4';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png'];
 
 self.addEventListener('install', e => {
