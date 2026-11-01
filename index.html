@@ -146,7 +146,7 @@ const Hap=(()=>{
 const hap=Hap.play;
 
 // ================= game =================
-let g=null,state='menu',afterSettings='menu';
+let g=null,state='menu',afterSettings='menu',updReady=false;
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
 function newGame(mode,lv){
   if(lv==null)lv=S.lv[mode];if(mode==='still')lv=0;if(mode==='zen'&&lv<1)lv=1;
@@ -539,6 +539,7 @@ function showOv(html){ov.innerHTML=html;ov.hidden=false;ov.scrollTop=0}
 const LOGO=`<svg width="52" height="52" viewBox="0 0 52 52"><rect x="2" y="26" width="22" height="22" rx="6" fill="${COLORS.O}"/><rect x="26" y="26" width="22" height="22" rx="6" fill="${COLORS.S}"/><rect x="26" y="2" width="22" height="22" rx="6" fill="${COLORS.I}"/></svg>`;
 function bestLabel(m){const b=BEST[m];if(b==null)return'';return m==='sprint'?'best '+fmtTime(b):(m==='zen'||m==='still'||m==='master')?'best '+b+' lines':'best '+fmtNum(b)}
 function showMenu(){
+  if(updReady){location.reload();return}
   state='menu';g=null;resetInput();drawBg();dirty=true;
   const saved=store.get('tessel.save',null);
   showOv(`<div class="card">${LOGO}<h1>T-TsL</h1><p class="sub">Stack. Clear. Repeat.</p>
@@ -659,7 +660,27 @@ addEventListener('pagehide',()=>save());
 
 window.__t={masterLock,masterClear,lockMs,gravMs,get g(){return g},get state(){return state},press,release,get L(){return L},newGame,lock,fits,perf,Hap,levelInterval};
 layout();showMenu();requestAnimationFrame(frame);
-if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost')){try{navigator.serviceWorker.register('sw.js').catch(()=>{})}catch(e){}}
+const BUILD='20261101152559';
+function applyUpdate(){updReady=true;if(state==='menu'||state==='over')location.reload()}
+async function checkForUpdate(){
+  try{
+    const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});if(!r.ok)return;
+    const v=(await r.json()).v;if(!v||v===BUILD)return;
+    // pull the new files straight into the offline cache, then swap in at the menu
+    const keys=await caches.keys();
+    for(const k of keys){const c=await caches.open(k);
+      await Promise.all(['./','./index.html','./sw.js','./manifest.webmanifest'].map(u=>fetch(u+(u.includes('?')?'&':'?')+'fresh='+Date.now(),{cache:'no-store'}).then(res=>{if(res.ok)return c.put(u,res)}).catch(()=>{})))}
+    applyUpdate();
+  }catch(e){}
+}
+if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost')){try{
+  const hadCtl=!!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).catch(()=>{});
+  navigator.serviceWorker.addEventListener('message',e=>{if(e.data==='ttsl-updated')applyUpdate()});
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(hadCtl)applyUpdate()});
+  setTimeout(checkForUpdate,800);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkForUpdate()});
+}catch(e){}}
 </script>
 </body>
 </html>
