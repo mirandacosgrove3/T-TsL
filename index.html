@@ -41,7 +41,7 @@ button{font-family:inherit}
 .btn{display:flex;justify-content:space-between;align-items:center;width:100%;padding:16px 16px;border:2px solid var(--line);background:var(--panel2);color:var(--ink);font:800 16px/1 var(--f);letter-spacing:1.2px;text-transform:uppercase;text-align:left;box-shadow:5px 5px 0 var(--edge);transition:transform .05s,box-shadow .05s}
 .btn:active{transform:translate(3px,3px);box-shadow:2px 2px 0 var(--edge)}
 .btn span{color:var(--dim);font-weight:700;font-size:12px;letter-spacing:.8px}
-.btn.primary{background:var(--accent);border-color:#ff6a5c;color:#fff}
+.btn.primary{background:var(--accent);border-color:#ff8fb0;color:#fff}
 .btn.primary span{color:#ffd9d4}
 .btn.quiet{background:transparent;justify-content:center;color:var(--dim);box-shadow:none;border-style:dashed}
 .btn.quiet:active{transform:none}
@@ -88,14 +88,14 @@ const KJ={'0>1':[[0,0],[-1,0],[-1,1],[0,-2],[-1,-2]],'1>0':[[0,0],[1,0],[1,-1],[
 const KI={'0>1':[[0,0],[-2,0],[1,0],[-2,-1],[1,2]],'1>0':[[0,0],[2,0],[-1,0],[2,1],[-1,-2]],'1>2':[[0,0],[-1,0],[2,0],[-1,2],[2,-1]],'2>1':[[0,0],[1,0],[-2,0],[1,-2],[-2,1]],'2>3':[[0,0],[2,0],[-1,0],[2,1],[-1,-2]],'3>2':[[0,0],[-2,0],[1,0],[-2,-1],[1,2]],'3>0':[[0,0],[1,0],[-2,0],[1,-2],[-2,1]],'0>3':[[0,0],[-1,0],[2,0],[-1,2],[2,-1]]};
 const K180=[[0,0],[0,1],[1,0],[-1,0],[0,-1]];
 const NAMES=['','Single','Double','Triple','Quad'];
-const MODE_NAMES={marathon:'Marathon',sprint:'Sprint 40',ultra:'Ultra',master:'Master',zen:'Zen',still:'Still',countdown:'Countdown'};
-const MODE_LIST=[['Classic',['marathon','sprint','ultra','master']],['Relax',['zen','still']],['Adventurous',['countdown']]];
+const MODE_NAMES={marathon:'Marathon',sprint:'Sprint 40',ultra:'Ultra',master:'Master',zen:'Zen',still:'Still',countdown:'Countdown',climb:'Climb'};
+const MODE_LIST=[['Classic',['marathon','sprint','ultra','master','climb']],['Relax',['zen','still']],['Adventurous',['countdown']]];
 const MAX_RESETS=15;
 
 // ================= storage / settings =================
 const store={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}},del(k){try{localStorage.removeItem(k)}catch(e){}}};
-const DEF={control:'drag',sens:0.85,vsens:1.0,flick:0.9,das:150,arr:30,sdf:20,lock:500,tapSides:true,ghost:true,hand:'right',hStrength:0.8,hMoves:true,liveFlick:true,iosHx:false,clearPause:'off',lv:{marathon:1,sprint:1,ultra:1,master:21,zen:1,still:0,countdown:1},endless:false};
-let S=Object.assign({},DEF,store.get('tessel.settings',{}));S.lv=Object.assign({},DEF.lv,S.lv||{});
+const DEF={control:'drag',sens:0.85,vsens:1.0,flick:0.9,das:150,arr:30,sdf:20,lock:500,tapSides:true,ghost:true,hand:'right',hStrength:0.8,hMoves:true,liveFlick:true,iosHx:false,clearPause:'off',lv:{marathon:1,sprint:1,ultra:1,master:21,zen:1,still:0,countdown:1,climb:35},endless:false,climb:{end:50,per:10,endless:false,catchup:false}};
+let S=Object.assign({},DEF,store.get('tessel.settings',{}));S.lv=Object.assign({},DEF.lv,S.lv||{});S.climb=Object.assign({},DEF.climb,S.climb||{});
 let BEST=store.get('tessel.best',{});
 
 // ================= haptics =================
@@ -157,7 +157,8 @@ let g=null,state='menu',afterSettings='menu',updReady=false;
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
 function newGame(mode,lv){
   if(lv==null)lv=S.lv[mode];if(mode==='still')lv=0;if(mode==='zen'&&lv<1)lv=1;
-  g={mode,start:lv,endless:mode==='marathon'&&S.endless,cd:pickCd(),areT:0,board:new Array(W*H).fill(0),bag:[],queue:[],cur:null,hold:null,canHold:true,score:0,lines:0,level:lv,combo:-1,b2b:false,time:0,lockT:0,resets:0,lowest:0,grav:0,lastRot:false,lastKick:0,msgs:[],flash:null,pid:0,pieces:0};
+  const cl=S.climb;
+  g={mode,start:lv,endless:(mode==='marathon'&&S.endless)||(mode==='climb'&&cl.endless),per:cl.per,end:Math.max(lv,cl.end),catchup:cl.catchup,cd:pickCd(),areT:0,board:new Array(W*H).fill(0),bag:[],queue:[],cur:null,hold:null,canHold:true,score:0,lines:0,level:lv,combo:-1,b2b:false,time:0,lockT:0,resets:0,lowest:0,grav:0,lastRot:false,lastKick:0,msgs:[],flash:null,pid:0,pieces:0};
   fillQueue();spawn(takeNext());resetInput();state='play';hideOv();dirty=true;drawBg();save();
 }
 function pickCd(){return[2,5,8,10][Math.floor(Math.random()*4)]}
@@ -275,12 +276,19 @@ function lock(dropStrength){
   if(g.mode==='sprint'&&g.lines>=40){endGame(true);return}
   if(g.mode==='marathon'&&!g.endless&&g.lines>=150){endGame(true);return}
   if(g.mode==='master'&&g.lines>=(51-g.start)*10){endGame(true);return}
+  if(g.mode==='climb'){
+    const nl=Math.min(g.end,g.catchup?Math.max(g.start,1+Math.floor(g.lines/g.per)):g.start+Math.floor(g.lines/g.per));
+    if(nl>g.level){g.level=nl;msg(nl>20?'M'+(nl-20):'Level '+nl);setTimeout(()=>hap('level'),260)}
+    if(!g.endless&&g.lines>=climbGoal(g)){endGame(true);return}
+  }
   g.canHold=true;
   const cdl=n?clearMs(g.level):0;
   if(cdl>0){g.pending=full;g.areT=cdl;g.areMax=cdl}
   else{if(n){collapse(full);g.flash={rows:full.map(y=>y-TOP),t:g.time}}afterClear()}
   if(state==='play')maybeSave();
 }
+function climbGoal(o){return o.catchup?o.end*o.per:(o.end-o.start+1)*o.per}
+function climbToNext(){if(g.level>=g.end)return g.endless?'—':String(Math.max(0,climbGoal(g)-g.lines));const nextAt=g.catchup?g.level*g.per:(g.level-g.start+1)*g.per;return String(Math.max(0,nextAt-g.lines))}
 function levelInterval(lv){return lv<=0?Infinity:1000*Math.pow(0.8-(Math.min(lv,20)-1)*0.007,Math.min(lv,20)-1)}
 const MLOCK=[[1,491.6],[10,491.6],[11,460],[15,291.6],[20,191.6],[25,141.6],[30,91.6]];
 function masterLock(m){for(let i=1;i<MLOCK.length;i++){const[a,la]=MLOCK[i-1],[b,lb]=MLOCK[i];if(m<=b)return la+(lb-la)*(m-a)/(b-a)}return 91.6}
@@ -512,6 +520,7 @@ function drawFx(){
   if(m==='sprint'){stat('TIME',fmtTime(g.time));stat('LINES',Math.max(0,40-g.lines)+' left');stat('PPS',(g.pieces/Math.max(1,g.time/1000)).toFixed(2))}
   else if(m==='ultra'){stat('TIME',fmtTime(Math.max(0,180000-g.time)));stat('SCORE',fmtNum(g.score));stat('LINES',String(g.lines))}
   else if(m==='countdown'){stat('TIME',fmtTime(Math.max(0,300000-g.time)));stat('SCORE',fmtNum(g.score));stat('I DROP IN',String(g.cd))}
+  else if(m==='climb'){stat('LEVEL',lvShort(g.level));stat(g.level>=g.end?'TO FINISH':'NEXT LV IN',climbToNext());stat('TIME',fmtTime(g.time))}
   else if(m==='master'){stat('LEVEL',lvShort(g.level));stat('LINES',g.lines+'/'+(51-g.start)*10);stat('TIME',fmtTime(g.time))}
   else if(m==='zen'||m==='still'){stat('LINES',String(g.lines));stat('SCORE',fmtNum(g.score));stat('SPEED',lvShort(g.level))}
   else{stat('SCORE',fmtNum(g.score));stat('LEVEL',lvShort(g.level));stat('LINES',g.endless?String(g.lines):g.lines+'/150')}
@@ -548,19 +557,40 @@ const ov=document.getElementById('ov');
 function hideOv(){ov.hidden=true;ov.innerHTML=''}
 function showOv(html){ov.innerHTML=html;ov.hidden=false;ov.scrollTop=0}
 const LOGO=`<svg width="56" height="56" viewBox="0 0 56 56"><rect x="5" y="31" width="22" height="22" fill="#000"/><rect x="31" y="31" width="22" height="22" fill="#000"/><rect x="31" y="5" width="22" height="22" fill="#000"/><rect x="2" y="28" width="22" height="22" fill="${COLORS.O}"/><rect x="28" y="28" width="22" height="22" fill="${COLORS.T}"/><rect x="28" y="2" width="22" height="22" fill="${COLORS.I}"/></svg>`;
-function bestLabel(m){const b=BEST[m];if(b==null)return'';return m==='sprint'?'best '+fmtTime(b):(m==='zen'||m==='still'||m==='master')?'best '+b+' lines':'best '+fmtNum(b)}
+function bestLabel(m){const b=BEST[m];if(b==null)return'';return m==='sprint'?'best '+fmtTime(b):(m==='zen'||m==='still'||m==='master'||m==='climb')?'best '+b+' lines':'best '+fmtNum(b)}
 function showMenu(){
   if(updReady){location.reload();return}
   state='menu';g=null;resetInput();drawBg();dirty=true;
   const saved=store.get('tessel.save',null);
   showOv(`<div class="card">${LOGO}<h1>T-TsL</h1><p class="sub">Stack. Clear. Repeat.</p>
   ${saved?`<button class="btn primary" data-a="continue">Continue<span>${MODE_NAMES[saved.mode]}</span></button>`:''}
-  ${MODE_LIST.map(([grp,ms])=>`<p class="grp">${grp}</p>`+ms.map(m=>`<button class="btn" data-a="setup-${m}">${MODE_NAMES[m]}<span>${m==='still'?'no gravity':lvShort(S.lv[m])}${bestLabel(m)?' · '+bestLabel(m):''}</span></button>`).join('')).join('')}
+  ${MODE_LIST.map(([grp,ms])=>`<p class="grp">${grp}</p>`+ms.map(m=>`<button class="btn" data-a="setup-${m}">${MODE_NAMES[m]}<span>${m==='still'?'no gravity':m==='climb'?lvShort(S.lv.climb)+' → '+lvShort(Math.max(S.lv.climb,S.climb.end)):lvShort(S.lv[m])}${bestLabel(m)?' · '+bestLabel(m):''}</span></button>`).join('')).join('')}
   <button class="btn quiet" data-a="settings">Controls, haptics & settings</button></div>`);
 }
-const MODE_NOTE={marathon:'150 lines, speeding up every 10. Past Lv 20 it climbs into the Master curve (M1–M30).',sprint:'Clear 40 lines as fast as you can. Speed stays fixed.',ultra:'Score as much as you can in 3 minutes. Speed stays fixed.',master:'20G the whole way. Every 10 lines the lock delay and line-clear pause shrink, through M30.',zen:'No game over: topping out wipes the field and score and you keep going. Pick any speed, Lv 1 through M30; it stays fixed.',still:'No gravity, no lock timer, no game over. Pieces sit until you drop them, so you can plan every placement.',countdown:'5 minutes. Every few pieces, an I piece drops straight down a random column.'};
+const MODE_NOTE={marathon:'150 lines, speeding up every 10. Past Lv 20 it climbs into the Master curve (M1–M30).',sprint:'Clear 40 lines as fast as you can. Speed stays fixed.',ultra:'Score as much as you can in 3 minutes. Speed stays fixed.',master:'20G the whole way. Every 10 lines the lock delay and line-clear pause shrink, through M30.',zen:'No game over: topping out wipes the field and score and you keep going. Pick any speed, Lv 1 through M30; it stays fixed.',still:'No gravity, no lock timer, no game over. Pieces sit until you drop them, so you can plan every placement.',climb:'Pick where you start and where you top out. Every level lasts the same number of lines, so no long flat stretch and no sprint at the end.',countdown:'5 minutes. Every few pieces, an I piece drops straight down a random column.'};
 function speedNote(v){return v>20?`Instant drop. Lock delay ${Math.round(masterLock(v-20))} ms (Master table). Line-clear pause ${Math.round(clearMs(v))} ms${S.clearPause==='off'?' (off in settings)':''}.`:v<=0?'Pieces only fall when you drop them.':`Lock delay ${S.lock} ms (change it in settings). No line-clear pause.`}
+function climbSummary(){const c=S.climb,st=S.lv.climb,en=Math.max(st,c.end);const n=en-st+1;
+  if(c.catchup){return `Effect pacing: ${st*c.per} lines at ${lvShort(st)}, then ${c.per} lines per level up to ${lvShort(en)}. ${c.endless?'Then endless.':(en*c.per)+' lines total.'}`}
+  return `${n} level${n>1?'s':''} × ${c.per} lines = ${n*c.per} lines${c.endless?', then endless at '+lvShort(en):''}.`}
+function showClimbSetup(){
+  const c=S.climb;if(c.end<S.lv.climb)c.end=S.lv.climb;
+  showOv(`<div class="card"><h2>Climb</h2><p class="sub">${MODE_NOTE.climb}</p>
+  <div class="set"><h3>Route</h3>
+  <div class="row"><label>Start<em id="v-cst">${lvLabel(S.lv.climb)}</em></label><input type="range" id="cst" min="1" max="50" step="1" value="${S.lv.climb}"></div>
+  <div class="row"><label>Top<em id="v-cen">${lvLabel(c.end)}</em></label><input type="range" id="cen" min="1" max="50" step="1" value="${c.end}"></div>
+  <div class="row"><label>Lines per level<em id="v-cpr">${c.per}</em></label><input type="range" id="cpr" min="5" max="40" step="5" value="${c.per}"></div>
+  <label class="tog">Endless once you reach the top<input type="checkbox" id="cel" ${c.endless?'checked':''}></label>
+  <label class="tog">Effect-style pacing (stay at start until caught up)<input type="checkbox" id="ccu" ${c.catchup?'checked':''}></label>
+  <p class="note" id="csum">${climbSummary()}</p></div>
+  <button class="btn primary" data-a="new-climb">Start</button><button class="btn quiet" data-a="menu">Back</button></div>`);
+  const $=id=>document.getElementById(id);
+  const sync=()=>{S.lv.climb=+$('cst').value;if(+$('cen').value<S.lv.climb)$('cen').value=S.lv.climb;c.end=+$('cen').value;c.per=+$('cpr').value;c.endless=$('cel').checked;c.catchup=$('ccu').checked;
+    $('v-cst').textContent=lvLabel(S.lv.climb);$('v-cen').textContent=lvLabel(c.end);$('v-cpr').textContent=c.per;$('csum').textContent=climbSummary();saveSettings()};
+  ['cst','cen','cpr'].forEach(id=>$(id).addEventListener('input',()=>{sync();hap('move')}));
+  ['cel','ccu'].forEach(id=>$(id).addEventListener('change',()=>{sync();hap('ui')}));
+}
 function showSetup(m){
+  if(m==='climb'){showClimbSetup();return}
   if(m==='still'){showOv(`<div class="card"><h2>Still</h2><p class="sub">${MODE_NOTE.still}</p><button class="btn primary" data-a="new-still">Start</button><button class="btn quiet" data-a="menu">Back</button></div>`);return}
   const min=m==='master'?21:1,v=Math.max(min,S.lv[m]);S.lv[m]=v;
   showOv(`<div class="card"><h2>${MODE_NAMES[m]}</h2><p class="sub">${MODE_NOTE[m]}</p>
@@ -583,14 +613,14 @@ function endGame(win){
   const m=g.mode;let isBest=false;
   if(m==='sprint'&&win){if(BEST.sprint==null||g.time<BEST.sprint){BEST.sprint=Math.round(g.time);isBest=true}}
   if(m==='marathon'){if(BEST.marathon==null||g.score>BEST.marathon){BEST.marathon=g.score;isBest=g.score>0}}
-  if(m==='zen'||m==='still'||m==='master'){if(BEST[m]==null||g.lines>BEST[m]){BEST[m]=g.lines;isBest=g.lines>0}}
+  if(m==='zen'||m==='still'||m==='master'||m==='climb'){if(BEST[m]==null||g.lines>BEST[m]){BEST[m]=g.lines;isBest=g.lines>0}}
   if(m==='ultra'||m==='countdown'){if(BEST[m]==null||g.score>BEST[m]){BEST[m]=g.score;isBest=g.score>0}}
   store.set('tessel.best',BEST);
   const st=m==='sprint'?[['Time',win?fmtTime(g.time):'—'],['Pieces',g.pieces],['Lines',g.lines],['Pieces/sec',(g.pieces/Math.max(1,g.time/1000)).toFixed(2)]]
-    :m==='master'?[['Reached',lvShort(g.level)],['Lines',g.lines],['Time',fmtTime(g.time)],['Score',fmtNum(g.score)]]
+    :(m==='master'||m==='climb')?[['Reached',lvShort(g.level)],['Lines',g.lines],['Time',fmtTime(g.time)],['Score',fmtNum(g.score)]]
     :[['Score',fmtNum(g.score)],['Lines',g.lines],['Level',lvShort(g.level)],['Pieces',g.pieces]];
   if(win)hap('allclear');
-  setTimeout(()=>showOv(`<div class="card"><h2>${win?(m==='ultra'||m==='countdown'?'Time':m==='master'?'Master cleared':'Finished'):'Topped out'}</h2><p class="sub">${MODE_NAMES[m]} · ${lvShort(g.start)}${isBest?' · new best':''}</p>
+  setTimeout(()=>showOv(`<div class="card"><h2>${win?(m==='ultra'||m==='countdown'?'Time':m==='master'?'Master cleared':m==='climb'?'Summit':'Finished'):'Topped out'}</h2><p class="sub">${MODE_NAMES[m]} · ${lvShort(g.start)}${isBest?' · new best':''}</p>
   <div class="stats">${st.map(([a,b])=>`<div class="stat"><small>${a}</small><b>${b}</b></div>`).join('')}</div>
   <button class="btn primary" data-a="again">Play again</button>
   <button class="btn quiet" data-a="menu">Main menu</button></div>`),350);
@@ -669,7 +699,7 @@ addEventListener('pagehide',()=>save());
 
 window.__t={masterLock,masterClear,lockMs,gravMs,get g(){return g},get state(){return state},press,release,get L(){return L},newGame,lock,fits,perf,Hap,levelInterval};
 layout();showMenu();requestAnimationFrame(frame);
-const BUILD='20261101223857';
+const BUILD='20261103144849';
 function applyUpdate(){updReady=true;if(state==='menu'||state==='over')location.reload()}
 async function checkForUpdate(){
   try{
